@@ -32,6 +32,10 @@ async function run() {
         const routineCollection = client.db('MealDB2025').collection('routine');
         const amountCollection = client.db('MealDB2025').collection('amount');
         const varaCollection = client.db('MealDB2025').collection('vasaBara');
+        const rentCollection = client.db('MealDB2025').collection('homeRent');
+        const khalaCollection = client.db('MealDB2025').collection('khalaBill');
+        const currentCollection = client.db('MealDB2025').collection('currentBill');
+        const noticeCollection = client.db('MealDB2025').collection('notice');
 
         // JWT related API
         app.post('/jwt', async (req, res) => {
@@ -129,8 +133,35 @@ async function run() {
             }
         });
 
+
+        app.patch('/users/:id', async (req, res) => {
+            const id = req.params.id;
+            const updateDoc = {
+                $set: req.body,
+            };
+            const result = await userCollection.updateOne({ _id: new ObjectId(id) }, updateDoc);
+            res.send(result);
+        });
+
+
         // Get Meals API
         app.get('/meals', async (req, res) => {
+            const result = await mealCollection.find().toArray();
+            res.send(result);
+        });
+
+        app.get('/meals/:id', async (req, res) => {
+            const id = req.params.id;
+            try {
+                const meal = await mealCollection.findOne({ _id: new ObjectId(id) });
+                if (!meal) return res.status(404).send({ message: "Meal not found" });
+                res.send(meal);
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching meal" });
+            }
+        });
+
+        app.get('/meals2', async (req, res) => {
             const result = await mealCollection.find().toArray();
             res.send(result);
         });
@@ -151,6 +182,54 @@ async function run() {
                 res.status(500).send({ message: 'Server error while deleting the meal.' });
             }
         });
+
+        app.delete('/meals2/delete-by-month', async (req, res) => {
+            try {
+                const { year, month } = req.query;
+
+                if (!year || !month) {
+                    return res.status(400).send({ message: "Year and month are required." });
+                }
+
+                const numericYear = parseInt(year);
+                const numericMonth = parseInt(month);
+
+                const result = await mealCollection.deleteMany({
+                    "date.year": numericYear,
+                    "date.month": numericMonth
+                });
+
+                res.send({
+                    deletedCount: result.deletedCount,
+                    message: `Deleted ${result.deletedCount} meals for ${year}-${month}`
+                });
+            } catch (error) {
+                console.error("Error deleting meals by month:", error);
+                res.status(500).send({ message: "Failed to delete meals." });
+            }
+        });
+
+        app.put('/meals/:id', async (req, res) => {
+            const id = req.params.id;
+            const updated = { ...req.body };
+
+            // Remove _id field from updated data to avoid immutable field update error
+            delete updated._id;
+
+            try {
+                const result = await mealCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: updated }
+                );
+                res.send(result);
+            } catch (error) {
+                console.error('Error updating meal:', error);
+                res.status(500).send({ error: 'Failed to update meal' });
+            }
+        });
+
+
+
 
 
         app.post('/bazar', async (req, res) => {
@@ -347,7 +426,7 @@ async function run() {
             }
         });
 
-         app.get("/rentAmount", async (req, res) => {
+        app.get("/rentAmount", async (req, res) => {
             try {
                 const result = await varaCollection.find().toArray();
                 res.send(result);
@@ -355,6 +434,155 @@ async function run() {
                 res.status(500).send({ message: "Failed to fetch rent data" });
             }
         });
+
+        app.post('/room-rents', async (req, res) => {
+            const { username, month } = req.body;
+
+            const exists = await rentCollection.findOne({ username, month });
+
+            if (exists) {
+                return res.status(409).send({ message: 'This user already paid home rent for this month.' });
+            }
+
+            const result = await rentCollection.insertOne(req.body);
+            res.send(result);
+        });
+
+
+
+        app.get('/room-rents', async (req, res) => {
+            const rents = await rentCollection.find().toArray();
+            res.send(rents);
+        });
+
+
+        // Route for deleting room rent by ID
+        app.delete('/room-rents/:id', async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await rentCollection.deleteOne({ _id: new ObjectId(id) });
+
+                if (result.deletedCount === 1) {
+                    res.status(200).json({ message: 'Room rent record deleted successfully' });
+                } else {
+                    res.status(404).json({ message: 'Room rent record not found' });
+                }
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ message: 'Server error, failed to delete' });
+            }
+        });
+
+
+        app.post('/khala-bills', async (req, res) => {
+            const { username, month } = req.body;
+
+            const exists = await khalaCollection.findOne({ username, month });
+
+            if (exists) {
+                return res.status(409).send({ message: 'This user already paid home rent for this month.' });
+            }
+
+            const result = await khalaCollection.insertOne(req.body);
+            res.send(result);
+        });
+
+
+        app.get('/khala-bills', async (req, res) => {
+            const rents = await khalaCollection.find().toArray();
+            res.send(rents);
+        });
+
+
+        // Route for deleting room rent by ID
+        app.delete('/khala-bills/:id', async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await khalaCollection.deleteOne({ _id: new ObjectId(id) });
+
+                if (result.deletedCount === 1) {
+                    res.status(200).json({ message: 'Room rent record deleted successfully' });
+                } else {
+                    res.status(404).json({ message: 'Room rent record not found' });
+                }
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ message: 'Server error, failed to delete' });
+            }
+        });
+
+        app.post('/current-bills', async (req, res) => {
+            const { username, month } = req.body;
+
+            const exists = await currentCollection.findOne({ username, month });
+
+            if (exists) {
+                return res.status(409).send({ message: 'This user already paid home rent for this month.' });
+            }
+
+            const result = await currentCollection.insertOne(req.body);
+            res.send(result);
+        });
+
+
+        app.get('/current-bills', async (req, res) => {
+            const rents = await currentCollection.find().toArray();
+            res.send(rents);
+        });
+
+
+        // Route for deleting room rent by ID
+        app.delete('/current-bills/:id', async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await currentCollection.deleteOne({ _id: new ObjectId(id) });
+
+                if (result.deletedCount === 1) {
+                    res.status(200).json({ message: 'Room rent record deleted successfully' });
+                } else {
+                    res.status(404).json({ message: 'Room rent record not found' });
+                }
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ message: 'Server error, failed to delete' });
+            }
+        });
+
+        app.post('/notices', async (req, res) => {
+            const notice = req.body;
+            try {
+                const result = await noticeCollection.insertOne(notice);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Failed to create job event" });
+            }
+        });
+
+        app.get('/notices', async (req, res) => {
+            const rents = await noticeCollection.find().toArray();
+            res.send(rents);
+        });
+
+        app.delete('/notices/:id', async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await noticeCollection.deleteOne({ _id: new ObjectId(id) });
+
+                if (result.deletedCount === 1) {
+                    res.status(200).json({ message: 'Room rent record deleted successfully' });
+                } else {
+                    res.status(404).json({ message: 'Room rent record not found' });
+                }
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ message: 'Server error, failed to delete' });
+            }
+        });
+
 
         // console.log('Connected to MongoDB!');
     } finally {
